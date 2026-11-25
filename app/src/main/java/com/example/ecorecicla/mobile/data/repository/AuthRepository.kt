@@ -1,36 +1,47 @@
 package com.example.ecorecicla.mobile.data.repository
 
-import com.example.ecorecicla.mobile.data.remote.ApiService
-import com.example.ecorecicla.mobile.data.remote.ApiServiceFactory
+import android.content.Context
+import com.example.ecorecicla.mobile.data.local.EcoReciclaDatabase
+import com.example.ecorecicla.mobile.data.local.UsuarioLocal
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-// ======================================================
-// PROYECTO: ECORECICLA MOBILE
-// ARCHIVO: AuthRepository.kt
-// PATRÓN DE DISEÑO: REPOSITORY
-// RESPONSABILIDAD: Gestión de datos de autenticación.
-// ======================================================
+// Patrón Repository.
+// Centraliza las operaciones de autenticación local.
 
-class AuthRepository(
+class AuthRepository(context: Context) {
 
-    // Inyección de dependencia mediante el constructor.
-    // Utiliza Factory Method para crear el servicio API.
-    private val apiService: ApiService =
-        ApiServiceFactory().createService()
+    private val database =
+        EcoReciclaDatabase.obtenerInstancia(context)
 
-) {
+    // Registrar usuario sin bloquear la interfaz.
+    suspend fun registrar(
+        nombre: String,
+        correo: String,
+        password: String
+    ): Boolean = withContext(Dispatchers.IO) {
 
-    // ==================================================
-    // OPERACIONES DE AUTENTICACIÓN
-    // ==================================================
+        database.registrarUsuario(
+            nombre,
+            correo,
+            password
+        ) != -1L
+    }
 
-    // En esta sección se implementarán las operaciones:
-    //
-    // 1. Inicio de sesión.
-    // 2. Registro de usuarios.
-    // 3. Consulta del perfil.
-    // 4. Cierre de sesión.
-    //
-    // Las operaciones se incorporarán cuando se definan
-    // los endpoints reales de la API de EcoRecicla.
+    // Validar las credenciales almacenadas en SQLite.
+    suspend fun login(
+        correo: String,
+        password: String
+    ): UsuarioLocal? = withContext(Dispatchers.IO) {
 
+        database.autenticarUsuario(correo, password)
+    }
+
+    // Consultar información del usuario.
+    suspend fun obtenerUsuario(
+        id: Long
+    ): UsuarioLocal? = withContext(Dispatchers.IO) {
+
+        database.obtenerUsuario(id)
+    }
 }

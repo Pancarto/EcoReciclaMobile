@@ -1,74 +1,48 @@
 package com.example.ecorecicla.mobile.viewmodel
 
+import android.app.Application
 import android.util.Patterns
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.ecorecicla.mobile.data.repository.AuthRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-// ======================================================
-// PROYECTO: ECORECICLA MOBILE
-// ARCHIVO: RegisterViewModel.kt
-// ARQUITECTURA: MVVM
-// PATRÓN DE COMPORTAMIENTO: OBSERVER
-// RESPONSABILIDAD: Estado y validación del registro.
-// ======================================================
-
-// ======================================================
-// ESTADO DE LA INTERFAZ DE REGISTRO
-// ======================================================
-
+// Estado observable del formulario.
 data class RegisterUiState(
-
-    // Datos personales del usuario.
     val nombre: String = "",
     val correo: String = "",
-
-    // Credenciales de acceso.
     val password: String = "",
     val confirmarPassword: String = "",
-
-    // Visibilidad de las contraseñas.
     val passwordVisible: Boolean = false,
     val confirmarVisible: Boolean = false,
-
-    // Mensajes de error de cada campo.
     val errorNombre: String? = null,
     val errorCorreo: String? = null,
     val errorPassword: String? = null,
     val errorConfirmacion: String? = null,
-
-    // Estados de la operación.
     val isLoading: Boolean = false,
     val isRegistered: Boolean = false,
-
-    // Mensaje informativo.
     val mensaje: String? = null
 )
 
-// ======================================================
-// VIEWMODEL DE REGISTRO
-// ======================================================
+// ViewModel responsable del registro real.
+class RegisterViewModel(
+    application: Application
+) : AndroidViewModel(application) {
 
-class RegisterViewModel : ViewModel() {
+    private val repository = AuthRepository(application)
 
-    // Estado privado y modificable.
     private val _uiState = MutableStateFlow(RegisterUiState())
 
-    // Estado público de solo lectura.
-    // La interfaz observa sus cambios mediante StateFlow.
     val uiState: StateFlow<RegisterUiState> =
         _uiState.asStateFlow()
 
-    // ==================================================
-    // ACTUALIZAR NOMBRE
-    // ==================================================
-
     fun onNombreChange(nombre: String) {
-
         _uiState.update {
-
             it.copy(
                 nombre = nombre,
                 errorNombre = null,
@@ -77,14 +51,8 @@ class RegisterViewModel : ViewModel() {
         }
     }
 
-    // ==================================================
-    // ACTUALIZAR CORREO ELECTRÓNICO
-    // ==================================================
-
     fun onCorreoChange(correo: String) {
-
         _uiState.update {
-
             it.copy(
                 correo = correo,
                 errorCorreo = null,
@@ -93,14 +61,8 @@ class RegisterViewModel : ViewModel() {
         }
     }
 
-    // ==================================================
-    // ACTUALIZAR CONTRASEÑA
-    // ==================================================
-
     fun onPasswordChange(password: String) {
-
         _uiState.update {
-
             it.copy(
                 password = password,
                 errorPassword = null,
@@ -110,14 +72,8 @@ class RegisterViewModel : ViewModel() {
         }
     }
 
-    // ==================================================
-    // ACTUALIZAR CONFIRMACIÓN DE CONTRASEÑA
-    // ==================================================
-
     fun onConfirmarPasswordChange(confirmacion: String) {
-
         _uiState.update {
-
             it.copy(
                 confirmarPassword = confirmacion,
                 errorConfirmacion = null,
@@ -126,66 +82,34 @@ class RegisterViewModel : ViewModel() {
         }
     }
 
-    // ==================================================
-    // MOSTRAR U OCULTAR CONTRASEÑA
-    // ==================================================
-
     fun togglePasswordVisibility() {
-
         _uiState.update {
-
-            it.copy(
-                passwordVisible = !it.passwordVisible
-            )
+            it.copy(passwordVisible = !it.passwordVisible)
         }
     }
-
-    // ==================================================
-    // MOSTRAR U OCULTAR CONFIRMACIÓN
-    // ==================================================
 
     fun toggleConfirmarVisibility() {
-
         _uiState.update {
-
-            it.copy(
-                confirmarVisible = !it.confirmarVisible
-            )
+            it.copy(confirmarVisible = !it.confirmarVisible)
         }
     }
 
-    // ==================================================
-    // VALIDAR FORMULARIO DE REGISTRO
-    // ==================================================
-
+    // Validar y guardar el usuario en SQLite.
     fun register() {
 
-        // Obtener el estado actual del formulario.
         val estado = _uiState.value
+
+        if (estado.isLoading || estado.isRegistered) return
 
         val nombre = estado.nombre.trim()
         val correo = estado.correo.trim()
         val password = estado.password
-        val confirmacion = estado.confirmarPassword
 
-        // ==============================================
-        // VALIDACIÓN DEL NOMBRE
-        // ==============================================
-
-        val errorNombre = when {
-
-            nombre.isBlank() ->
-                "Ingresa tu nombre completo"
-
-            else -> null
-        }
-
-        // ==============================================
-        // VALIDACIÓN DEL CORREO
-        // ==============================================
+        val errorNombre = if (nombre.isBlank()) {
+            "Ingresa tu nombre completo"
+        } else null
 
         val errorCorreo = when {
-
             correo.isBlank() ->
                 "Ingresa tu correo electrónico"
 
@@ -195,12 +119,7 @@ class RegisterViewModel : ViewModel() {
             else -> null
         }
 
-        // ==============================================
-        // VALIDACIÓN DE CONTRASEÑA
-        // ==============================================
-
         val errorPassword = when {
-
             password.isBlank() ->
                 "Ingresa una contraseña"
 
@@ -210,87 +129,95 @@ class RegisterViewModel : ViewModel() {
             else -> null
         }
 
-        // ==============================================
-        // VALIDACIÓN DE CONFIRMACIÓN
-        // ==============================================
-
         val errorConfirmacion = when {
-
-            confirmacion.isBlank() ->
+            estado.confirmarPassword.isBlank() ->
                 "Confirma tu contraseña"
 
-            password != confirmacion ->
+            password != estado.confirmarPassword ->
                 "Las contraseñas no coinciden"
 
             else -> null
         }
 
-        // ==============================================
-        // COMPROBAR FORMULARIO COMPLETO
-        // ==============================================
-
-        val formularioValido =
-            errorNombre == null &&
-                    errorCorreo == null &&
-                    errorPassword == null &&
-                    errorConfirmacion == null
-
-        // Actualizar el estado de la interfaz.
         _uiState.update {
-
             it.copy(
-
                 errorNombre = errorNombre,
                 errorCorreo = errorCorreo,
                 errorPassword = errorPassword,
                 errorConfirmacion = errorConfirmacion,
-
-                isLoading = false,
-
-                // No existe todavía un registro real.
-                isRegistered = false,
-
-                mensaje = if (formularioValido) {
-
-                    "Formulario válido. Conexión al servidor pendiente."
-
-                } else {
-
-                    null
-                }
+                mensaje = null
             )
         }
 
-        // ==============================================
-        // FUTURA INTEGRACIÓN CON EL SERVIDOR
-        // ==============================================
-
-        // Cuando la API de EcoRecicla esté disponible,
-        // se utilizará AuthRepository para enviar los
-        // datos al servidor y registrar al usuario.
-
-        // isRegistered solo cambiará a true cuando
-        // el servidor confirme el registro exitoso.
-    }
-
-    // ==================================================
-    // LIMPIAR MENSAJE INFORMATIVO
-    // ==================================================
-
-    fun clearMessage() {
+        if (
+            errorNombre != null ||
+            errorCorreo != null ||
+            errorPassword != null ||
+            errorConfirmacion != null
+        ) {
+            return
+        }
 
         _uiState.update {
+            it.copy(isLoading = true)
+        }
 
+        viewModelScope.launch {
+
+            try {
+
+                val registrado = repository.registrar(
+                    nombre,
+                    correo,
+                    password
+                )
+
+                if (registrado) {
+
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isRegistered = true,
+                            password = "",
+                            confirmarPassword = "",
+                            mensaje = "Cuenta creada correctamente"
+                        )
+                    }
+
+                } else {
+
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorCorreo = "Este correo ya está registrado",
+                            mensaje = "No se pudo crear la cuenta"
+                        )
+                    }
+                }
+
+            } catch (e: CancellationException) {
+
+                throw e
+
+            } catch (e: Exception) {
+
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        mensaje = "Error al registrar el usuario"
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearMessage() {
+        _uiState.update {
             it.copy(mensaje = null)
         }
     }
 
-    // ==================================================
-    // RESTABLECER FORMULARIO
-    // ==================================================
-
     fun clearState() {
-
         _uiState.value = RegisterUiState()
     }
 }
