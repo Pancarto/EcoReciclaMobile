@@ -7,12 +7,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 // Patrón Repository.
-// Centraliza las operaciones de autenticación local.
-
+// Centraliza la autenticación y persistencia de sesión.
 class AuthRepository(context: Context) {
 
+    private val appContext = context.applicationContext
+
     private val database =
-        EcoReciclaDatabase.obtenerInstancia(context)
+        EcoReciclaDatabase.obtenerInstancia(appContext)
+
+    // Preferencias privadas de EcoRecicla.
+    private val preferencias =
+        appContext.getSharedPreferences(
+            "ecorecicla_sesion",
+            Context.MODE_PRIVATE
+        )
+
+    companion object {
+        private const val CLAVE_USUARIO = "usuario_id"
+    }
 
     // Registrar usuario sin bloquear la interfaz.
     suspend fun registrar(
@@ -44,4 +56,52 @@ class AuthRepository(context: Context) {
 
         database.obtenerUsuario(id)
     }
+
+    // Guardar únicamente el identificador del usuario.
+    // Nunca almacenar la contraseña en SharedPreferences.
+    suspend fun guardarSesion(
+        usuarioId: Long
+    ): Boolean = withContext(Dispatchers.IO) {
+
+        preferencias.edit()
+            .putLong(CLAVE_USUARIO, usuarioId)
+            .commit()
+    }
+
+    // Recuperar la sesión guardada y comprobar
+    // que el usuario todavía exista en SQLite.
+    suspend fun recuperarSesion(): UsuarioLocal? =
+        withContext(Dispatchers.IO) {
+
+            val usuarioId = preferencias.getLong(
+                CLAVE_USUARIO,
+                -1L
+            )
+
+            if (usuarioId <= 0L) {
+                return@withContext null
+            }
+
+            val usuario =
+                database.obtenerUsuario(usuarioId)
+
+            // Eliminar sesiones de cuentas inexistentes.
+            if (usuario == null) {
+                preferencias.edit()
+                    .remove(CLAVE_USUARIO)
+                    .commit()
+            }
+
+            usuario
+        }
+
+    // Eliminar la sesión recordada.
+    // No elimina usuarios, puntos ni reciclajes.
+    suspend fun eliminarSesion(): Boolean =
+        withContext(Dispatchers.IO) {
+
+            preferencias.edit()
+                .remove(CLAVE_USUARIO)
+                .commit()
+        }
 }

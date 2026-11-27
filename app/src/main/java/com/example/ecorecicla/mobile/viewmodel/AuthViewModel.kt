@@ -22,7 +22,10 @@ data class AuthUiState(
     val isLoading: Boolean = false,
     val isAuthenticated: Boolean = false,
     val message: String? = null,
-    val usuarioId: Long? = null
+    val usuarioId: Long? = null,
+
+    // Preferencia de persistencia de sesión.
+    val recordarSesion: Boolean = false
 )
 
 // Arquitectura MVVM y patrón Observer.
@@ -30,14 +33,18 @@ class AuthViewModel(
     application: Application
 ) : AndroidViewModel(application) {
 
-    private val repository = AuthRepository(application)
+    private val repository =
+        AuthRepository(application)
 
-    private val _uiState = MutableStateFlow(AuthUiState())
+    private val _uiState =
+        MutableStateFlow(AuthUiState())
 
     val uiState: StateFlow<AuthUiState> =
         _uiState.asStateFlow()
 
+    // Actualizar correo electrónico.
     fun onEmailChange(email: String) {
+
         _uiState.update {
             it.copy(
                 email = email,
@@ -47,7 +54,9 @@ class AuthViewModel(
         }
     }
 
+    // Actualizar contraseña.
     fun onPasswordChange(password: String) {
+
         _uiState.update {
             it.copy(
                 password = password,
@@ -57,13 +66,27 @@ class AuthViewModel(
         }
     }
 
+    // Mostrar u ocultar contraseña.
     fun togglePasswordVisibility() {
+
         _uiState.update {
-            it.copy(passwordVisible = !it.passwordVisible)
+            it.copy(
+                passwordVisible = !it.passwordVisible
+            )
         }
     }
 
-    // Inicio de sesión real.
+    // Actualizar la casilla de recordar sesión.
+    fun onRecordarSesionChange(recordar: Boolean) {
+
+        if (_uiState.value.isLoading) return
+
+        _uiState.update {
+            it.copy(recordarSesion = recordar)
+        }
+    }
+
+    // Inicio de sesión real mediante SQLite.
     fun login() {
 
         val estado = _uiState.value
@@ -74,20 +97,23 @@ class AuthViewModel(
         val password = estado.password
 
         val errorCorreo = when {
+
             correo.isBlank() ->
                 "Ingresa tu correo electrónico"
 
-            !Patterns.EMAIL_ADDRESS.matcher(correo).matches() ->
+            !Patterns.EMAIL_ADDRESS
+                .matcher(correo).matches() ->
                 "Ingresa un correo válido"
 
             else -> null
         }
 
-        val errorPassword = if (password.isBlank()) {
-            "Ingresa tu contraseña"
-        } else {
-            null
-        }
+        val errorPassword =
+            if (password.isBlank()) {
+                "Ingresa tu contraseña"
+            } else {
+                null
+            }
 
         _uiState.update {
             it.copy(
@@ -99,9 +125,11 @@ class AuthViewModel(
             )
         }
 
-        if (errorCorreo != null || errorPassword != null) {
-            return
-        }
+        // Detener autenticación si existen errores.
+        if (
+            errorCorreo != null ||
+            errorPassword != null
+        ) return
 
         _uiState.update {
             it.copy(isLoading = true)
@@ -118,13 +146,45 @@ class AuthViewModel(
 
                 if (usuario != null) {
 
+                    // Guardar o eliminar la sesión
+                    // según la preferencia del usuario.
+                    val preferenciaGuardada =
+                        if (estado.recordarSesion) {
+
+                            repository.guardarSesion(
+                                usuario.id
+                            )
+
+                        } else {
+
+                            repository.eliminarSesion()
+                        }
+
+                    // No confirmar una preferencia
+                    // que no pudo almacenarse.
+                    if (!preferenciaGuardada) {
+
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                message =
+                                    "No se pudo guardar la preferencia de sesión. Intenta nuevamente."
+                            )
+                        }
+
+                        return@launch
+                    }
+
+                    // Autenticación completada.
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             isAuthenticated = true,
                             usuarioId = usuario.id,
                             password = "",
-                            message = "Inicio de sesión exitoso"
+                            passwordVisible = false,
+                            message =
+                                "Inicio de sesión exitoso"
                         )
                     }
 
@@ -134,7 +194,8 @@ class AuthViewModel(
                         it.copy(
                             isLoading = false,
                             isAuthenticated = false,
-                            message = "Correo o contraseña incorrectos"
+                            message =
+                                "Correo o contraseña incorrectos"
                         )
                     }
                 }
@@ -148,20 +209,25 @@ class AuthViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        message = "No fue posible iniciar sesión"
+                        message =
+                            "No fue posible iniciar sesión"
                     )
                 }
             }
         }
     }
 
+    // Limpiar mensajes.
     fun clearMessage() {
+
         _uiState.update {
             it.copy(message = null)
         }
     }
 
+    // Restablecer el formulario.
     fun clearState() {
+
         _uiState.value = AuthUiState()
     }
 }
