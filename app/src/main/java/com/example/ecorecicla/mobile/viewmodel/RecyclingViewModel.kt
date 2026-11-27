@@ -13,9 +13,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.floor
 
+// Información del reciclaje guardado correctamente.
+data class ResultadoReciclaje(
+    val material: String,
+    val peso: Double,
+    val puntos: Int
+)
+
 // Estado observable del formulario.
 data class RecyclingUiState(
-
     val materiales: List<MaterialReciclable> = emptyList(),
     val material: MaterialReciclable? = null,
     val peso: String = "",
@@ -24,7 +30,10 @@ data class RecyclingUiState(
     val errorPeso: String? = null,
     val isLoading: Boolean = false,
     val mensaje: String? = null,
-    val registrado: Boolean = false
+    val registrado: Boolean = false,
+
+    // Resultado confirmado por el repositorio.
+    val resultado: ResultadoReciclaje? = null
 )
 
 // Arquitectura MVVM y patrón Observer.
@@ -48,11 +57,13 @@ class RecyclingViewModel(
     // Consultar el catálogo desde SQLite.
     fun cargarMateriales() {
 
-        viewModelScope.launch {
+        if (_uiState.value.isLoading) return
 
-            _uiState.update {
-                it.copy(isLoading = true)
-            }
+        _uiState.update {
+            it.copy(isLoading = true)
+        }
+
+        viewModelScope.launch {
 
             try {
 
@@ -88,12 +99,15 @@ class RecyclingViewModel(
         material: MaterialReciclable
     ) {
 
+        if (_uiState.value.isLoading ||
+            _uiState.value.registrado
+        ) return
+
         _uiState.update {
             it.copy(
                 material = material,
                 errorMaterial = null,
-                mensaje = null,
-                registrado = false
+                mensaje = null
             )
         }
 
@@ -103,12 +117,15 @@ class RecyclingViewModel(
     // Actualizar peso.
     fun onPesoChange(peso: String) {
 
+        if (_uiState.value.isLoading ||
+            _uiState.value.registrado
+        ) return
+
         _uiState.update {
             it.copy(
                 peso = peso,
                 errorPeso = null,
-                mensaje = null,
-                registrado = false
+                mensaje = null
             )
         }
 
@@ -146,11 +163,12 @@ class RecyclingViewModel(
         }
     }
 
-    // Registrar reciclaje real.
+    // Registrar reciclaje real en SQLite.
     fun registrar(usuarioId: Long) {
 
         val estado = _uiState.value
 
+        // Evitar registros duplicados.
         if (estado.isLoading || estado.registrado) return
 
         val material = estado.material
@@ -176,10 +194,12 @@ class RecyclingViewModel(
             it.copy(
                 errorMaterial = errorMaterial,
                 errorPeso = errorPeso,
-                mensaje = null
+                mensaje = null,
+                resultado = null
             )
         }
 
+        // Validar los datos antes de guardar.
         if (
             errorMaterial != null ||
             errorPeso != null ||
@@ -195,6 +215,8 @@ class RecyclingViewModel(
 
             try {
 
+                // Guardar el reciclaje y obtener
+                // los puntos realmente otorgados.
                 val puntos =
                     repository.registrarReciclaje(
                         usuarioId = usuarioId,
@@ -202,12 +224,22 @@ class RecyclingViewModel(
                         peso = peso
                     )
 
+                // Crear el resultado exitoso.
+                val resultado = ResultadoReciclaje(
+                    material = material.nombre,
+                    peso = peso,
+                    puntos = puntos
+                )
+
+                // Observer notifica automáticamente
+                // a la interfaz de usuario.
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         registrado = true,
-                        mensaje =
-                            "¡Reciclaje registrado! Ganaste $puntos puntos."
+                        puntosEstimados = puntos,
+                        resultado = resultado,
+                        mensaje = "¡Reciclaje registrado! Ganaste $puntos puntos."
                     )
                 }
 
@@ -217,9 +249,12 @@ class RecyclingViewModel(
 
             } catch (e: Exception) {
 
+                // No mostrar éxito si falla SQLite.
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        registrado = false,
+                        resultado = null,
                         mensaje = "No se pudo registrar el reciclaje"
                     )
                 }
@@ -227,8 +262,11 @@ class RecyclingViewModel(
         }
     }
 
-    // Preparar un nuevo registro.
+    // Preparar un nuevo registro sin perder
+    // el catálogo de materiales.
     fun nuevoReciclaje() {
+
+        if (_uiState.value.isLoading) return
 
         _uiState.update {
             RecyclingUiState(
